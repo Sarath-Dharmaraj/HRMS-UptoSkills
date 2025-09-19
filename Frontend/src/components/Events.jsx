@@ -1,686 +1,564 @@
-import React, { useState, useEffect } from "react";
-import axios from "axios";
-import { FaClock, FaCalendarAlt, FaVideo, FaGlobe } from "react-icons/fa";
-import '../App.css';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Calendar, Clock, Users, Video, MapPin, Plus, X, AlertCircle, CheckCircle } from 'lucide-react';
 
-// Utility: dynamic avatar URL generation from organizer name or fallback
-const getAvatarUrl = (organizer) =>
-  `https://ui-avatars.com/api/?name=${encodeURIComponent(
-    organizer || "?"
-  )}&background=4c57c1&color=fff&size=64`;
-
-export default function Events() {
-  const [currentStep, setCurrentStep] = useState("event1");
-  const [eventData, setEventData] = useState({});
-  const [showPopup, setShowPopup] = useState(false);
-
+const Events = () => {
   const [events, setEvents] = useState([]);
+  const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [submitLoading, setSubmitLoading] = useState(false);
+  const [errors, setErrors] = useState({});
+  const [popup, setPopup] = useState('');
+  const modalRef = useRef(null);
+  const firstInputRef = useRef(null);
 
-  useEffect(() => {
-    fetchEvents();
+  const [form, setForm] = useState({
+    name: '',
+    date: '',
+    startTime: '',
+    duration: '',
+    timezone: 'Asia/Kolkata',
+    mode: 'Online',
+    organizer: '',
+    meetingLink: '',
+  });
+
+  const POPUP_DURATION = 3000;
+  const MIN_DURATION = 15;
+  const TIMEZONES = [
+    'Asia/Kolkata',
+    'America/New_York',
+    'Europe/London',
+    'Asia/Tokyo',
+    'Australia/Sydney'
+  ];
+
+  const validateForm = useCallback(() => {
+    const newErrors = {};
+    const now = new Date();
+    const eventDateTime = new Date(`${form.date}T${form.startTime}`);
+
+    if (!form.name.trim()) {
+      newErrors.name = 'Event title is required';
+    } else if (form.name.trim().length < 3) {
+      newErrors.name = 'Event title must be at least 3 characters';
+    }
+
+    if (!form.date) {
+      newErrors.date = 'Date is required';
+    } else if (eventDateTime < now) {
+      newErrors.date = 'Cannot schedule events in the past';
+    }
+
+    if (!form.startTime) {
+      newErrors.startTime = 'Start time is required';
+    }
+
+    if (!form.duration) {
+      newErrors.duration = 'Duration is required';
+    } else if (parseInt(form.duration) < MIN_DURATION) {
+      newErrors.duration = `Duration must be at least ${MIN_DURATION} minutes`;
+    } else if (parseInt(form.duration) > 480) {
+      newErrors.duration = 'Duration cannot exceed 8 hours';
+    }
+
+    if (!form.organizer.trim()) {
+      newErrors.organizer = 'Organizer name is required';
+    }
+
+    if (!form.meetingLink.trim()) {
+      newErrors.meetingLink = 'Meeting link is required';
+    } else {
+      const urlPattern = /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/;
+      if (!urlPattern.test(form.meetingLink)) {
+        newErrors.meetingLink = 'Please enter a valid URL';
+      }
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  }, [form]);
+
+  const showMessage = useCallback((msg, type = 'success') => {
+    setPopup({ message: msg, type });
+    setTimeout(() => setPopup(''), POPUP_DURATION);
   }, []);
 
-  // Fetch events from backend API
-  const fetchEvents = async () => {
+  const resetForm = useCallback(() => {
+    setForm({
+      name: '',
+      date: '',
+      startTime: '',
+      duration: '',
+      timezone: 'Asia/Kolkata',
+      mode: 'Online',
+      organizer: '',
+      meetingLink: '',
+    });
+    setErrors({});
+  }, []);
+
+  const fetchEvents = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
-      const res = await axios.get("http://localhost:5000/api/events");
-      setEvents(res.data.data || []);
-    } catch {
-      setError("Failed to load events");
+      const res = await fetch('/api/events');
+      if (!res.ok) throw new Error('Failed to fetch events');
+      const data = await res.json();
+      setEvents(data);
+      showMessage('Events loaded successfully!');
+    } catch (err) {
+      console.error('Error fetching events:', err);
+      showMessage('Failed to load events. Please try again.', 'error');
     } finally {
       setLoading(false);
     }
-  };
+  }, [showMessage]);
 
-  // Navigation handler between steps
-  const navigateToStep = (step, data = {}) => {
-    if (step === "event3") {
-      setEventData({ ...eventData, ...data });
-      setShowPopup(true);
-    } else {
-      setEventData({ ...eventData, ...data });
-      setCurrentStep(step);
-    }
-  };
-
-  // Close popup and refresh to event list
-  const closePopup = () => {
-    setShowPopup(false);
-    setCurrentStep("event1");
-    setEventData({});
+  useEffect(() => {
     fetchEvents();
-  };
+  }, [fetchEvents]);
 
-  return (
-    <div className="container py-5">
-      {currentStep === "event1" && (
-        <Event1
-          onNavigate={navigateToStep}
-          events={events}
-          loading={loading}
-          error={error}
-        />
-      )}
-      {currentStep === "event2" && (
-        <Event2 onNavigate={navigateToStep} fetchEvents={fetchEvents} />
-      )}
-      {showPopup && <Event3Popup eventData={eventData} onClose={closePopup} />}
-    </div>
-  );
-}
-
-/* ---------- EVENT LIST PAGE ---------- */
-function Event1({ onNavigate, events, loading, error }) {
-  return (
-    <>
-      <h2
-        className="fw-bold mb-5 pb-2 border-bottom border-3"
-        style={{
-          fontSize: "2.75rem",
-          letterSpacing: "1.5px",
-          textAlign: "center",
-          color: "black",
-        }}
-      >
-        Upcoming Events & Scheduling
-      </h2>
-
-      <div
-        className="row g-0 shadow rounded overflow-hidden"
-        style={{ minHeight: "70vh" }}
-      >
-        {/* Left Panel - Create New Event Button */}
-        <div
-          className="col-lg-4 d-flex justify-content-center align-items-center"
-          style={{
-            backgroundColor: "#f0f0f5",
-            color: "black",
-            minHeight: "100%",
-            flexDirection: "column",
-            padding: "2rem",
-          }}
-        >
-          <h3
-            className="mb-4"
-            style={{ fontWeight: 700, letterSpacing: "1px", textAlign: "center" }}
-          >
-            Ready to create?
-          </h3>
-          <button
-            className="btn shadow-sm"
-            onClick={() => onNavigate("event2")}
-            aria-label="Create New Event"
-            style={{
-              fontWeight: "600",
-              fontSize: "1.25rem",
-              borderRadius: "10px",
-              backgroundColor: "#4c57c1",
-              color: "white",
-              padding: "0.75rem 2.5rem",
-              border: "none",
-              transition: "background-color 0.3s ease",
-              cursor: "pointer",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#3b448f")}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#4c57c1")}
-          >
-            + Create New Event
-          </button>
-        </div>
-
-        {/* Right Panel - List of Scheduled Events */}
-        <div
-          className="col-lg-8 bg-white p-4 d-flex flex-column"
-          style={{
-            maxHeight: "70vh",
-            overflowY: "auto",
-          }}
-        >
-          <h3 className="fw-bold mb-4 text-center" style={{ color: "black" }}>
-            Scheduled Events
-          </h3>
-
-          {loading && (
-            <div className="text-center p-4">
-              <div className="spinner-border text-primary" role="status" />
-              <p className="mt-3 text-muted fs-5">Loading events...</p>
-            </div>
-          )}
-
-          {error && (
-            <div
-              className="alert alert-danger text-center"
-              role="alert"
-              style={{ fontWeight: "600" }}
-            >
-              {error}
-            </div>
-          )}
-
-          {!loading && !error && events.length === 0 && (
-            <div
-              className="alert alert-info text-center fs-5"
-              role="alert"
-              style={{ fontWeight: "600" }}
-            >
-              No events found. Create your first event!
-            </div>
-          )}
-
-          {!loading && events.length > 0 && (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-                gap: "1rem",
-                flexGrow: 1,
-              }}
-            >
-              {events.map((event) => (
-                <div
-                  key={event.id}
-                  className="card rounded shadow-sm border-0 d-flex flex-column justify-content-between"
-                  style={{
-                    boxShadow: "0 8px 16px rgba(0,0,0,0.1)",
-                    minHeight: "220px",
-                  }}
-                >
-                  <div className="card-body d-flex flex-column">
-                    <div className="d-flex align-items-center mb-3">
-                      <img
-                        src={getAvatarUrl(event.organizer)}
-                        alt="Organizer Avatar"
-                        className="me-3"
-                        style={{
-                          width: 55,
-                          height: 55,
-                          borderRadius: "50%",
-                          objectFit: "cover",
-                          boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-                        }}
-                      />
-                      <div>
-                        <p
-                          className="mb-1 text-muted fs-7"
-                          style={{ letterSpacing: "0.7px" }}
-                        >
-                          {event.organizer || "No organizer specified"}
-                        </p>
-                        <h5
-                          className="mb-0"
-                          style={{
-                            fontWeight: "700",
-                            fontSize: "1.2rem",
-                            color: "black",
-                          }}
-                        >
-                          {event.title}
-                        </h5>
-                      </div>
-                    </div>
-
-                    <ul
-                      className="list-unstyled text-muted fs-7 mb-3"
-                      style={{ letterSpacing: "0.5px", flexGrow: 1 }}
-                    >
-                      <li className="d-flex align-items-center mb-2">
-                        <FaClock
-                          className="me-2 text-primary"
-                          style={{ minWidth: 18, fontSize: 15 }}
-                        />
-                        <span>{event.duration ? `${event.duration} mins` : "No duration set"}</span>
-                      </li>
-                      <li className="d-flex align-items-center mb-2">
-                        <FaCalendarAlt
-                          className="me-2 text-primary"
-                          style={{ minWidth: 18, fontSize: 15 }}
-                        />
-                        <span>
-                          {event.date
-                            ? new Date(event.date).toLocaleString()
-                            : "No date set"}
-                        </span>
-                      </li>
-
-                      {/* Event Type */}
-                      <li className="d-flex align-items-center mb-2">
-                        <strong>Type: </strong>
-                        <span style={{ textTransform: "capitalize", marginLeft: 4 }}>
-                          {event.mode_of_event || "Unknown"}
-                        </span>
-                      </li>
-
-                      {/* Location for offline or hybrid */}
-                      {(event.mode_of_event === "offline" || event.mode_of_event === "hybrid") && (
-                        <li className="d-flex align-items-center mb-2" style={{ wordBreak: "break-word" }}>
-                          <strong>Location: </strong>
-                          <span className="location-text" style={{ marginLeft: 4 }}>
-                            {event.location || "No location specified"}
-                          </span>
-                        </li>
-                      )}
-
-                      {/* Meeting link for online or hybrid */}
-                      {(event.mode_of_event === "online" || event.mode_of_event === "hybrid") && (
-                        <li className="d-flex align-items-center mb-2" style={{ wordBreak: "break-word" }}>
-                          <FaVideo className="me-2 text-primary" style={{ minWidth: 18, fontSize: 15 }} />
-                          <span className="meeting-link-text">
-                            {event.meeting_link || "No meeting link set"}
-                          </span>
-                        </li>
-                      )}
-
-                      <li className="d-flex align-items-center">
-                        <FaGlobe
-                          className="me-2 text-primary"
-                          style={{ minWidth: 18, fontSize: 15 }}
-                        />
-                        <span>{event.timezone || "No timezone set"}</span>
-                      </li>
-                    </ul>
-
-                    <div className="d-flex justify-content-center mt-auto">
-                      <button
-                        className="btn btn-primary px-5 fw-semibold shadow"
-                        style={{ borderRadius: "8px", letterSpacing: "0.8px" }}
-                        onClick={() => alert(`Joining ${event.title}`)}
-                        aria-label={`Join ${event.title} event`}
-                      >
-                        Join Event
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </>
-  );
-}
-
-/* ---------- EVENT CREATION FORM ---------- */
-function Event2({ onNavigate, fetchEvents }) {
-  const [title, setTitle] = useState("");
-  const [date, setDate] = useState("");
-  const [startTime, setStartTime] = useState("");
-  const [duration, setDuration] = useState("");
-  const [timezone, setTimezone] = useState("Asia/Kolkata");
-  const [modeOfEvent, setModeOfEvent] = useState("Online");
-  const [location, setLocation] = useState("");
-  const [meetingLink, setMeetingLink] = useState("");
-  const [organizer, setOrganizer] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
-
-  // Converts the date and startTime inputs to ISO datetime string
-  const getISODateTime = () => {
-    if (!date || !startTime) return "";
-    try {
-      const dt = new Date(`${date}T${startTime}`);
-      if (isNaN(dt)) return "";
-      return dt.toISOString();
-    } catch {
-      return "";
+  useEffect(() => {
+    if (showModal) {
+      setTimeout(() => firstInputRef.current?.focus(), 100);
+      document.body.style.overflow = 'hidden';
+      const handleEscape = (e) => {
+        if (e.key === 'Escape') {
+          handleCloseModal();
+        }
+      };
+      document.addEventListener('keydown', handleEscape);
+      return () => {
+        document.body.style.overflow = 'unset';
+        document.removeEventListener('keydown', handleEscape);
+      };
     }
-  };
+  }, [showModal]);
+
+  const handleChange = useCallback((e) => {
+    const { name, value } = e.target;
+    setForm(prev => ({ ...prev, [name]: value }));
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: '' }));
+    }
+  }, [errors]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError("");
-
-    // Validate required fields
-    if (!title.trim() || !date || !startTime || !duration.trim() || !timezone) {
-      setError("Please fill in Title, Date, Start Time, Duration, and Timezone.");
+    if (!validateForm()) {
+      showMessage('Please fix the errors below', 'error');
       return;
     }
-
-    if (
-      (modeOfEvent === "Offline" || modeOfEvent === "Hybrid") &&
-      !location.trim()
-    ) {
-      setError("Location is required for Offline and Hybrid events.");
-      return;
-    }
-
-    if (
-      (modeOfEvent === "Online" || modeOfEvent === "Hybrid") &&
-      !meetingLink.trim()
-    ) {
-      setError("Meeting link is required for Online and Hybrid events.");
-      return;
-    }
-
-    const numericDuration = parseInt(duration, 10);
-    if (isNaN(numericDuration) || numericDuration <= 0) {
-      setError("Duration must be a positive number in minutes.");
-      return;
-    }
-
-    // Always provide location to satisfy NOT NULL constraint, use placeholder if online-only
-    const normalizedLocation =
-      modeOfEvent === "Offline" || modeOfEvent === "Hybrid"
-        ? location.trim()
-        : location.trim() || "Online event - virtual";
-
-    const newEvent = {
-      title: title.trim(),
-      date: getISODateTime(),
-      start_time: startTime, // Added explicitly here
-      duration: numericDuration,
-      timezone,
-      mode_of_event: modeOfEvent.toLowerCase(), // normalize casing to lowercase
-      organizer: organizer.trim() || null,
-      location: normalizedLocation,
-      meeting_link:
-        modeOfEvent === "Online" || modeOfEvent === "Hybrid"
-          ? meetingLink.trim()
-          : "",
-      // Let backend assign created_at, so do not send it here
-    };
-
-    console.log("Submitting event data:", newEvent);
-
-    setSubmitting(true);
-
+    setSubmitLoading(true);
     try {
-      const res = await axios.post("http://localhost:5000/api/events", newEvent, {
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch('/api/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
       });
-      onNavigate("event3", {
-        ...newEvent,
-        id: res.data.data?.id || Date.now(),
-      });
-      fetchEvents();
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const newEvent = await res.json();
+      setEvents(prev => [newEvent, ...prev]);
+      setShowModal(false);
+      resetForm();
+      showMessage('Event created successfully!');
     } catch (err) {
-      let msg = "Failed to create event.";
-      if (err.response?.data?.message) msg = err.response.data.message;
-      setError(msg);
+      console.error('Error creating event:', err);
+      showMessage('Failed to create event. Please try again.', 'error');
     } finally {
-      setSubmitting(false);
+      setSubmitLoading(false);
+    }
+  };
+
+  const handleCloseModal = useCallback(() => {
+    const hasChanges = Object.values(form).some(value => value !== '' && value !== 'Asia/Kolkata' && value !== 'Online');
+    if (hasChanges) {
+      if (window.confirm('You have unsaved changes. Are you sure you want to close?')) {
+        setShowModal(false);
+        resetForm();
+      }
+    } else {
+      setShowModal(false);
+      resetForm();
+    }
+  }, [form, resetForm]);
+
+  const handleJoinEvent = useCallback((eventId, meetingLink) => {
+    if (meetingLink) {
+      window.open(meetingLink, '_blank', 'noopener,noreferrer');
+      showMessage('Opening meeting link...');
+    } else {
+      showMessage('No meeting link available', 'error');
+    }
+  }, [showMessage]);
+
+  const initialsAvatar = (name = '') => {
+    const initials = name
+      .split(' ')
+      .slice(0, 2)
+      .map((n) => n[0])
+      .join('')
+      .toUpperCase();
+    return (
+      <div className="w-12 h-12 flex items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold text-sm shadow-lg">
+        {initials || 'NA'}
+      </div>
+    );
+  };
+
+  const ErrorMessage = ({ error }) => (
+    error ? (
+      <div className="text-red-400 text-sm mt-2 flex items-center gap-2" role="alert" aria-live="polite">
+        <AlertCircle className="w-4 h-4 flex-shrink-0" />
+        {error}
+      </div>
+    ) : null
+  );
+
+  const getModeIcon = (mode) => {
+    switch (mode) {
+      case 'Online': return <Video className="w-4 h-4" />;
+      case 'Offline': return <MapPin className="w-4 h-4" />;
+      case 'Hybrid': return <Users className="w-4 h-4" />;
+      default: return <Video className="w-4 h-4" />;
+    }
+  };
+
+  const getModeColor = (mode) => {
+    switch (mode) {
+      case 'Online': return 'bg-blue-50 text-blue-700 border-blue-200';
+      case 'Offline': return 'bg-green-50 text-green-700 border-green-200';
+      case 'Hybrid': return 'bg-purple-50 text-purple-700 border-purple-200';
+      default: return 'bg-blue-50 text-blue-700 border-blue-200';
     }
   };
 
   return (
-    <div
-      style={{
-        backgroundColor: "#f8f9fa",
-        minHeight: "100vh",
-        width: "100%",
-        padding: 30,
-      }}
-    >
-      <div className="container-fluid d-flex justify-content-center">
-        <div
-          className="card shadow-sm p-5"
-          style={{ maxWidth: 600, width: "100%", borderRadius: "12px" }}
-        >
-          <h4 className="mb-4 fw-bold text-primary letter-spacing-1">
-            Create New Event
-          </h4>
-
-          {error && (
-            <div
-              className="alert alert-danger shadow-sm fw-semibold"
-              style={{ fontSize: "0.9rem" }}
-            >
-              {error}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit}>
-            <div className="mb-4">
-              <label className="form-label fw-semibold">Event Title *</label>
-              <input
-                className="form-control shadow-sm"
-                required
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Event name"
-              />
-            </div>
-
-            <div className="mb-4">
-              <label className="form-label fw-semibold">Date *</label>
-              <input
-                type="date"
-                className="form-control shadow-sm"
-                required
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-              />
-            </div>
-
-            <div className="mb-4">
-              <label className="form-label fw-semibold">Start Time *</label>
-              <input
-                type="time"
-                className="form-control shadow-sm"
-                required
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-              />
-            </div>
-
-            <div className="mb-4">
-              <label className="form-label fw-semibold">Duration (minutes) *</label>
-              <input
-                type="number"
-                min="1"
-                className="form-control shadow-sm"
-                required
-                value={duration}
-                onChange={(e) => setDuration(e.target.value)}
-                placeholder="Duration in minutes"
-              />
-            </div>
-
-            <div className="mb-4">
-              <label className="form-label fw-semibold">Timezone *</label>
-              <select
-                className="form-select shadow-sm"
-                value={timezone}
-                onChange={(e) => setTimezone(e.target.value)}
-              >
-                <option value="Asia/Kolkata">Asia/Kolkata</option>
-                <option value="Asia/Yerevan">Asia/Yerevan</option>
-                <option value="America/New_York">America/New_York</option>
-                <option value="America/Los_Angeles">America/Los_Angeles</option>
-                <option value="Europe/London">Europe/London</option>
-                <option value="Europe/Berlin">Europe/Berlin</option>
-                <option value="Asia/Dubai">Asia/Dubai</option>
-                <option value="Asia/Tokyo">Asia/Tokyo</option>
-                <option value="Australia/Sydney">Australia/Sydney</option>
-                <option value="Africa/Nairobi">Africa/Nairobi</option>
-              </select>
-            </div>
-
-            <div className="mb-4">
-              <label className="form-label fw-semibold">Mode of Event *</label>
-              <select
-                className="form-select shadow-sm"
-                value={modeOfEvent}
-                onChange={(e) => setModeOfEvent(e.target.value)}
-              >
-                <option value="Online">Online</option>
-                <option value="Offline">Offline</option>
-                <option value="Hybrid">Hybrid</option>
-              </select>
-            </div>
-
-            {/* Organizer field */}
-            <div className="mb-4">
-              <label className="form-label fw-semibold">Organizer</label>
-              <input
-                className="form-control shadow-sm"
-                value={organizer}
-                onChange={(e) => setOrganizer(e.target.value)}
-                placeholder="Organizer name (optional)"
-              />
-            </div>
-
-            {(modeOfEvent === "Offline" || modeOfEvent === "Hybrid") && (
-              <div className="mb-4">
-                <label className="form-label fw-semibold">Location *</label>
-                <input
-                  className="form-control shadow-sm"
-                  required
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  placeholder="Venue / Address"
-                />
-              </div>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 text-gray-900">
+      {/* Success/Error Popup */}
+      {popup && (
+        <div className={`fixed top-6 right-6 z-50 px-6 py-4 rounded-lg shadow-2xl border backdrop-blur-sm transition-all duration-300 ${
+          popup.type === 'success' 
+            ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+            : 'bg-red-50 text-red-700 border-red-200'
+        }`}>
+          <div className="flex items-center gap-3">
+            {popup.type === 'success' ? (
+              <CheckCircle className="w-5 h-5 flex-shrink-0" />
+            ) : (
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
             )}
-
-            {(modeOfEvent === "Online" || modeOfEvent === "Hybrid") && (
-              <div className="mb-4">
-                <label className="form-label fw-semibold">Meeting Link *</label>
-                <input
-                  type="url"
-                  className="form-control shadow-sm"
-                  required
-                  value={meetingLink}
-                  onChange={(e) => setMeetingLink(e.target.value)}
-                  placeholder="https://meet.example.com/..."
-                />
-              </div>
-            )}
-
-            <div className="d-flex gap-3 justify-content-end">
-              <button
-                type="submit"
-                className="btn btn-primary px-5 fw-semibold shadow"
-                disabled={submitting}
-                style={{ letterSpacing: "1px", borderRadius: "8px" }}
-              >
-                {submitting ? "Creating..." : "Create Event"}
-              </button>
-
-              <button
-                type="button"
-                className="btn btn-outline-secondary px-5 fw-semibold shadow"
-                disabled={submitting}
-                onClick={() => onNavigate("event1")}
-                style={{ letterSpacing: "1px", borderRadius: "8px" }}
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
+            <span className="font-medium">{popup.message}</span>
+          </div>
         </div>
-      </div>
-    </div>
-  );
-}
+      )}
 
-/* ---------- EVENT SUCCESS POPUP ---------- */
-function Event3Popup({ eventData, onClose }) {
-  if (!eventData) return null;
-
-  return (
-    <div
-      className="popup-overlay position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
-      style={{ backgroundColor: "rgba(0, 0, 0, 0.55)", zIndex: 1050 }}
-      onClick={onClose}
-    >
-      <div
-        className="popup-content bg-white rounded shadow-lg p-4 mx-3"
-        style={{
-          maxWidth: "480px",
-          width: "100%",
-          maxHeight: "90vh",
-          overflowY: "auto",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="d-flex justify-content-between align-items-center mb-4">
-          <h4 className="mb-0 text-dark" style={{ letterSpacing: "1px" }}>
-            Event Created Successfully!
-          </h4>
-          <button
-            type="button"
-            className="btn-close"
-            onClick={onClose}
-            aria-label="Close"
-          />
-        </div>
-
-        <div className="text-center mb-5">
-          <img
-            src={getAvatarUrl(eventData.organizer)}
-            alt="Organizer"
-            className="rounded-circle mb-3"
-            style={{
-              width: 85,
-              height: 85,
-              boxShadow: "0 0 10px rgba(76,87,193,0.22)",
-            }}
-          />
-          <h5 className="text-dark fw-bold">{eventData.title}</h5>
-          <p className="mb-1 text-muted fs-6">{eventData.organizer || "No organizer specified"}</p>
-          <p className="text-muted small" style={{ letterSpacing: "0.5px" }}>
-            Your event details have been saved.
-          </p>
-        </div>
-
-        <div
-          className="event-details border rounded p-4 bg-light"
-          style={{ fontSize: "0.95rem", letterSpacing: "0.4px" }}
-        >
-          <p className="mb-2">
-            <FaCalendarAlt className="me-2 text-primary" />
-            {eventData.date ? new Date(eventData.date).toLocaleString() : ""}
-          </p>
-          <p className="mb-2">
-            <FaClock className="me-2 text-primary" />
-            {eventData.duration ? `${eventData.duration} mins` : ""}
-          </p>
-          <p className="mb-2">
-            <FaGlobe className="me-2 text-primary" />
-            {eventData.timezone}
-          </p>
-          <p className="mb-2">
-            <strong>Type:</strong> {eventData.mode_of_event || "Unknown"}
-          </p>
-          {(eventData.mode_of_event === "offline" ||
-            eventData.mode_of_event === "hybrid") && (
-            <p className="mb-2 location-text" style={{ wordBreak: "break-word" }}>
-              <FaVideo className="me-2 text-primary" />
-              {eventData.location}
+      <div className="px-6 md:px-12 lg:px-20 xl:px-40 py-8">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">
+          <div>
+            <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-gray-800 via-gray-700 to-gray-600 bg-clip-text text-transparent mb-8 px-4 py-2">
+              Upcoming Events
+            </h1>
+            <p className="text-lg text-gray-600 max-w-2xl leading-relaxed">
+              Stay connected and never miss important meetings. Join your scheduled events with ease.
             </p>
-          )}
-          {(eventData.mode_of_event === "online" ||
-            eventData.mode_of_event === "hybrid") &&
-            eventData.meeting_link && (
-              <p className="mb-0 meeting-link-text" style={{ wordBreak: "break-word" }}>
-                <FaVideo className="me-2 text-primary" />
-                <a
-                  href={eventData.meeting_link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: "#4c57c1" }}
-                >
-                  {eventData.meeting_link}
-                </a>
-              </p>
-            )}
-        </div>
-
-        <div className="text-center mt-5">
+          </div>
           <button
-            className="btn btn-primary px-5 py-2 fw-semibold"
-            style={{ letterSpacing: "1px" }}
-            onClick={onClose}
+            onClick={() => setShowModal(true)}
+            className="flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-violet-300 to-purple-300 hover:from-violet-400 hover:to-purple-400 text-black font-bold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
           >
-            Done
+            <Plus className="w-5 h-5" />
+            Create Event
           </button>
         </div>
+
+        {/* Events List */}
+        <div className="space-y-6">
+          {loading ? (
+            <div className="flex justify-center py-16">
+              <div className="flex items-center gap-3 text-gray-600">
+                <svg className="animate-spin h-6 w-6" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span className="font-medium">Loading events...</span>
+              </div>
+            </div>
+          ) : events.length === 0 ? (
+            <div className="text-center py-16 text-gray-500">
+              <Calendar className="w-16 h-16 mx-auto mb-4 opacity-50" />
+              <h3 className="text-xl font-semibold mb-2">No events scheduled</h3>
+              <p className="text-gray-400">Create your first event to get started!</p>
+            </div>
+          ) : (
+            events.map((event, index) => (
+              <div
+                key={event.id || index}
+                className="bg-white/80 backdrop-blur-sm border border-gray-200 rounded-2xl p-6 shadow-xl hover:shadow-2xl transition-all duration-300 hover:border-gray-300"
+              >
+                <div className="flex flex-col lg:flex-row gap-6">
+                  <div className="flex items-start gap-4 flex-1">
+                    {initialsAvatar(event.organizer)}
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-xl font-bold text-gray-900 mb-2 line-clamp-2">
+                        {event.name}
+                      </h3>
+                      <div className="flex flex-wrap gap-4 text-sm text-gray-600 mb-4">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-4 h-4 text-violet-500" />
+                          <span className="font-medium">{event.date}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Clock className="w-4 h-4 text-violet-500" />
+                          <span className="font-medium">{event.startTime} ({event.duration} min)</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Users className="w-4 h-4 text-violet-500" />
+                          <span className="font-medium">{event.organizer}</span>
+                        </div>
+                      </div>
+                      <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold border ${getModeColor(event.mode)}`}>
+                        {getModeIcon(event.mode)}
+                        {event.mode}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-col sm:flex-row lg:flex-col gap-3 lg:w-32">
+                    <button
+                      onClick={() => handleJoinEvent(event.id, event.meetingLink)}
+                      className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
+                    >
+                      Join
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
+
+      {/* Modal for Creating New Event */}
+      {showModal && (
+        <div
+          className="fixed inset-0 flex items-center justify-center bg-black/30 backdrop-blur-sm z-50 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-title"
+        >
+          <div
+            ref={modalRef}
+            className="bg-white border border-gray-200 rounded-2xl shadow-2xl w-full max-w-2xl mx-auto text-gray-900 max-h-[90vh] overflow-y-auto"
+          >
+            <div className="p-8">
+              {/* Modal Header */}
+              <div className="flex justify-between items-center mb-8">
+                <h2 id="modal-title" className="text-3xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
+                  Create New Event
+                </h2>
+                <button
+                  type="button"
+                  onClick={handleCloseModal}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors duration-200"
+                >
+                  <X className="w-6 h-6 text-gray-600 hover:text-gray-900" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSubmit}>
+                <div className="space-y-6">
+                  {/* Event Title */}
+                  <div>
+                    <label htmlFor="name" className="block text-sm font-semibold text-gray-700 mb-3">
+                      Event Title *
+                    </label>
+                    <input
+                      ref={firstInputRef}
+                      type="text"
+                      name="name"
+                      id="name"
+                      value={form.name}
+                      onChange={handleChange}
+                      placeholder="Enter event title"
+                      required
+                      className={`w-full border rounded-xl px-4 py-3 bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all duration-300 ${
+                        errors.name ? 'border-red-400 ring-2 ring-red-200' : 'border-gray-300 hover:border-gray-400'
+                      }`}
+                    />
+                    <ErrorMessage error={errors.name} />
+                  </div>
+
+                  {/* Date and Time Row */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label htmlFor="date" className="block text-sm font-semibold text-gray-700 mb-3">
+                        Date *
+                      </label>
+                      <input
+                        type="date"
+                        name="date"
+                        id="date"
+                        value={form.date}
+                        onChange={handleChange}
+                        required
+                        className={`w-full border rounded-xl px-4 py-3 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all duration-300 ${
+                          errors.date ? 'border-red-400 ring-2 ring-red-200' : 'border-gray-300 hover:border-gray-400'
+                        }`}
+                      />
+                      <ErrorMessage error={errors.date} />
+                    </div>
+                    <div>
+                      <label htmlFor="startTime" className="block text-sm font-semibold text-gray-700 mb-3">
+                        Start Time *
+                      </label>
+                      <input
+                        type="time"
+                        name="startTime"
+                        id="startTime"
+                        value={form.startTime}
+                        onChange={handleChange}
+                        required
+                        className={`w-full border rounded-xl px-4 py-3 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all duration-300 ${
+                          errors.startTime ? 'border-red-400 ring-2 ring-red-200' : 'border-gray-300 hover:border-gray-400'
+                        }`}
+                      />
+                      <ErrorMessage error={errors.startTime} />
+                    </div>
+                  </div>
+
+                  {/* Duration and Organizer Row */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label htmlFor="duration" className="block text-sm font-semibold text-gray-700 mb-3">
+                        Duration (minutes) *
+                      </label>
+                      <input
+                        type="number"
+                        name="duration"
+                        id="duration"
+                        value={form.duration}
+                        onChange={handleChange}
+                        placeholder="60"
+                        min={MIN_DURATION}
+                        max="480"
+                        required
+                        className={`w-full border rounded-xl px-4 py-3 bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all duration-300 ${
+                          errors.duration ? 'border-red-400 ring-2 ring-red-200' : 'border-gray-300 hover:border-gray-400'
+                        }`}
+                      />
+                      <ErrorMessage error={errors.duration} />
+                    </div>
+                    <div>
+                      <label htmlFor="organizer" className="block text-sm font-semibold text-gray-700 mb-3">
+                        Organizer *
+                      </label>
+                      <input
+                        type="text"
+                        name="organizer"
+                        id="organizer"
+                        value={form.organizer}
+                        onChange={handleChange}
+                        placeholder="Your name"
+                        required
+                        className={`w-full border rounded-xl px-4 py-3 bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all duration-300 ${
+                          errors.organizer ? 'border-red-400 ring-2 ring-red-200' : 'border-gray-300 hover:border-gray-400'
+                        }`}
+                      />
+                      <ErrorMessage error={errors.organizer} />
+                    </div>
+                  </div>
+
+                  {/* Timezone */}
+                  <div>
+                    <label htmlFor="timezone" className="block text-sm font-semibold text-gray-700 mb-3">
+                      Timezone *
+                    </label>
+                    <select
+                      name="timezone"
+                      id="timezone"
+                      value={form.timezone}
+                      onChange={handleChange}
+                      required
+                      className="w-full border border-gray-300 rounded-xl px-4 py-3 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all duration-300 hover:border-gray-400"
+                    >
+                      {TIMEZONES.map(tz => (
+                        <option key={tz} value={tz} className="bg-white">{tz}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Event Mode */}
+                  <div>
+                    <label htmlFor="mode" className="block text-sm font-semibold text-gray-700 mb-3">
+                      Event Mode *
+                    </label>
+                    <select
+                      name="mode"
+                      id="mode"
+                      value={form.mode}
+                      onChange={handleChange}
+                      required
+                      className="w-full border border-gray-300 rounded-xl px-4 py-3 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all duration-300 hover:border-gray-400"
+                    >
+                      <option value="Online" className="bg-white">Online</option>
+                      <option value="Offline" className="bg-white">Offline</option>
+                      <option value="Hybrid" className="bg-white">Hybrid</option>
+                    </select>
+                  </div>
+
+                  {/* Meeting Link */}
+                  <div>
+                    <label htmlFor="meetingLink" className="block text-sm font-semibold text-gray-700 mb-3">
+                      Meeting Link *
+                    </label>
+                    <input
+                      type="url"
+                      name="meetingLink"
+                      id="meetingLink"
+                      value={form.meetingLink}
+                      onChange={handleChange}
+                      placeholder="https://meet.google.com/... or https://zoom.us/..."
+                      required
+                      className={`w-full border rounded-xl px-4 py-3 bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all duration-300 ${
+                        errors.meetingLink ? 'border-red-400 ring-2 ring-red-200' : 'border-gray-300 hover:border-gray-400'
+                      }`}
+                    />
+                    <ErrorMessage error={errors.meetingLink} />
+                  </div>
+                </div>
+
+                {/* Modal Footer */}
+                <div className="flex gap-4 justify-end p-8 pt-6 border-t border-gray-200">
+                  <button
+                    type="button"
+                    onClick={handleCloseModal}
+                    className="px-6 py-3 bg-gray-600 hover:bg-gray-500 text-white rounded-xl font-semibold transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitLoading}
+                    className="px-8 py-3 bg-gradient-to-r from-violet-300 to-purple-300 hover:from-violet-400 hover:to-purple-400 text-black font-bold rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-violet-500 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                  >
+                    {submitLoading ? (
+                      <span className="flex items-center gap-3">
+                        <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Creating...
+                      </span>
+                    ) : 'Create Event'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
-}
+};
+
+export default Events;
