@@ -6,6 +6,30 @@ body, html, #root {
   background-color: #f5f6fa;
 }
 
+/* Custom Scrollbar Styles for Modal */
+.modal-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #9CA3AF #F3F4F6;
+}
+
+.modal-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.modal-scrollbar::-webkit-scrollbar-track {
+  background: #F3F4F6;
+  border-radius: 4px;
+}
+
+.modal-scrollbar::-webkit-scrollbar-thumb {
+  background: #9CA3AF;
+  border-radius: 4px;
+}
+
+.modal-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #6B7280;
+}
+
 .logo {
   height: 6em;
   padding: 1.5em;
