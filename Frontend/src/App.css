@@ -1,0 +1,254 @@
+body, html, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: 'Segoe UI', sans-serif;
+  background-color: #f5f6fa;
+}
+
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
+}
+
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+.card {
+  padding: 2em;
+}
+.App {
+  text-align: center;
+}
+
+.App-logo {
+  height: 40vmin;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .App-logo {
+    animation: App-logo-spin infinite 20s linear;
+  }
+}
+
+.App-header {
+  background-color: #282c34;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(10px + 2vmin);
+  color: white;
+}
+
+.App-link {
+  color: #61dafb;
+}
+.blurred-bg {
+  filter: blur(5px);
+  pointer-events: none;
+  user-select: none;
+}
+
+.modal-backdrop.show {
+  backdrop-filter: blur(5px);
+}
+
+.toast-success {
+  background-color: #28a745;
+  color: white;
+  font-weight: 500;
+}
+
+/* Light Mode */
+.app {
+  background-color: #ffffff;
+  color: #000000;
+}
+
+/* Dark Mode */
+.dark-mode {
+  background-color: #1e1e1e;
+  color: #ffffff;
+  min-height: 100vh;
+  transition: all 0.3s ease;
+}
+
+.dark-mode .container-fluid {
+  background-color: #1e1e1e;
+}
+
+.dark-mode .card {
+  background-color: #2c2c2c;
+  color: #fff;
+  border: 1px solid #404040;
+}
+
+.dark-mode .list-group-item {
+  background-color: #2c2c2c;
+  color: #fff;
+  border-color: #404040;
+}
+
+.dark-mode .list-group-item:hover {
+  background-color: #404040;
+}
+
+.dark-mode .modal-content {
+  background-color: #2c2c2c;
+  color: #fff;
+}
+
+.dark-mode .btn-primary {
+  background-color: #4a90e2;
+  border-color: #4a90e2;
+}
+
+.dark-mode .text-primary {
+  color: #6bb3ff !important;
+}
+
+/* Settings Page Improvements */
+.settings-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.settings-title {
+  color: #333;
+  margin-bottom: 2rem;
+  font-weight: 600;
+}
+
+.dark-mode .settings-title {
+  color: #fff;
+}
+
+.settings-list .list-group-item {
+  border: none;
+  border-radius: 8px !important;
+  margin-bottom: 8px;
+  padding: 1rem 1.5rem;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.settings-list .list-group-item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+/* Event Page Improvements */
+.event-wrapper {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+  overflow: hidden;
+}
+
+.event-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 2rem;
+  text-align: center;
+}
+
+.event-profile {
+  border: 4px solid white;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+}
+
+.event-card-box {
+  padding: 2.5rem;
+}
+
+.event-card-box .d-flex {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.event-card-box .d-flex:last-child {
+  border-bottom: none;
+}
+
+/* Events List Page */
+.event-list-card {
+  transition: all 0.3s ease;
+  border: none;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+}
+
+.event-list-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  border-radius: 25px;
+  padding: 0.75rem 2rem;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+}
+
+
+
+@keyframes App-logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+
+.read-the-docs {
+  color: #888;
+}
+
+.app-container {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.main-content {
+  margin-left: 16%;        
+  width: 85%;
+  height: 100vh;          
+  overflow: auto;       
+}
+.white-placeholder::placeholder {
+  color: white !important;
+  opacity: 1;
+}
