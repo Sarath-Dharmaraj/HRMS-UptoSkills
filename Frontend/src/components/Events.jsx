@@ -83,7 +83,7 @@ const Events = () => {
       newErrors.date = 'Event date cannot be in the past';
     }
     
-    if (form.organizer_email && !/\\S+@\\S+\\.\\S+/.test(form.organizer_email)) {
+    if (form.organizer_email && !/\S+@\S+\.\S+/.test(form.organizer_email)) {
       newErrors.organizer_email = 'Please enter a valid email address';
     }
     
