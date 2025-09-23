@@ -19,7 +19,7 @@ A simple and responsive HRMS (Human Resource Management System) web application 
 ---
 
 ## 🛠️ Tech Stack
-- **Frontend:** React.js, Bootstrap, React Icons, Tailwind CSS (optional)  
+- **Frontend:** React.js, React Icons, Tailwind CSS (optional)  
 - **Backend:** Node.js + Express 
 - **Database:** PostgreSQL (local instance)  
 - **Design:** Clean, responsive UI  
