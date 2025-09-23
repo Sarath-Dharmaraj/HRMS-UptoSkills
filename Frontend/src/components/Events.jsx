@@ -1,136 +1,193 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Calendar, Clock, Users, Video, MapPin, Plus, X, AlertCircle, CheckCircle } from 'lucide-react';
+import { Calendar, Clock, User, MapPin, Video, AlertCircle, Plus, Search, Filter, Download, Globe, Users, Tag, CheckCircle2, PlayCircle, XCircle, Circle } from 'lucide-react';
+import { eventsAPI, healthAPI } from '../services/api';
 
 const Events = () => {
   const [events, setEvents] = useState([]);
+  const [filteredEvents, setFilteredEvents] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
+  const [dbConnected, setDbConnected] = useState(false);
   const [errors, setErrors] = useState({});
   const [popup, setPopup] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filters, setFilters] = useState({
+    status: '',
+    mode: '',
+    organizer: '',
+    dateFrom: '',
+    dateTo: ''
+  });
+  const [showFilters, setShowFilters] = useState(false);
+  
   const modalRef = useRef(null);
   const firstInputRef = useRef(null);
 
   const [form, setForm] = useState({
-    name: '',
+    title: '',
+    description: '',
     date: '',
-    startTime: '',
+    start_time: '',
+    end_time: '',
     duration: '',
     timezone: 'Asia/Kolkata',
-    mode: 'Online',
+    mode_of_event: 'online',
     organizer: '',
-    meetingLink: '',
+    organizer_email: '',
+    meeting_link: '',
+    location: '',
+    max_attendees: '',
+    tags: []
   });
 
-  const POPUP_DURATION = 3000;
-  const MIN_DURATION = 15;
   const TIMEZONES = [
-    'Asia/Kolkata',
-    'America/New_York',
-    'Europe/London',
-    'Asia/Tokyo',
-    'Australia/Sydney'
+    'Asia/Kolkata', 'America/New_York', 'Europe/London', 
+    'Asia/Tokyo', 'Australia/Sydney', 'Europe/Berlin',
+    'America/Los_Angeles', 'Asia/Dubai'
   ];
+
+  const TAGS_OPTIONS = [
+    'Workshop', 'Training', 'Meeting', 'Presentation', 
+    'Team Building', 'AI', 'Technology', 'Leadership',
+    'Data Science', 'Soft Skills', 'Analytics'
+  ];
+
+  // Check database connection on component mount
+  useEffect(() => {
+    const checkDbConnection = async () => {
+      try {
+        const response = await healthAPI.getDatabaseStatus();
+        setDbConnected(response.data.success);
+        if (response.data.success) {
+          showMessage('✅ Database connected successfully', 'success');
+        }
+      } catch (error) {
+        console.error('Database connection failed:', error);
+        setDbConnected(false);
+        showMessage('❌ Database connection failed', 'error');
+      }
+    };
+    checkDbConnection();
+  }, []);
 
   const validateForm = useCallback(() => {
     const newErrors = {};
-    const now = new Date();
-    const eventDateTime = new Date(`${form.date}T${form.startTime}`);
-
-    if (!form.name.trim()) {
-      newErrors.name = 'Event title is required';
-    } else if (form.name.trim().length < 3) {
-      newErrors.name = 'Event title must be at least 3 characters';
+    
+    if (!form.title?.trim()) newErrors.title = 'Event title is required';
+    if (!form.organizer?.trim()) newErrors.organizer = 'Organizer name is required';
+    if (!form.date) newErrors.date = 'Event date is required';
+    if (!form.start_time) newErrors.start_time = 'Start time is required';
+    
+    if (form.date && new Date(form.date) < new Date().setHours(0, 0, 0, 0)) {
+      newErrors.date = 'Event date cannot be in the past';
+    }
+    
+    if (form.organizer_email && !/\S+@\S+\.\S+/.test(form.organizer_email)) {
+      newErrors.organizer_email = 'Please enter a valid email address';
+    }
+    
+    if (form.mode_of_event === 'online' && !form.meeting_link?.trim()) {
+      newErrors.meeting_link = 'Meeting link is required for online events';
+    }
+    
+    if (form.mode_of_event === 'offline' && !form.location?.trim()) {
+      newErrors.location = 'Location is required for offline events';
     }
 
-    if (!form.date) {
-      newErrors.date = 'Date is required';
-    } else if (eventDateTime < now) {
-      newErrors.date = 'Cannot schedule events in the past';
+    if (form.max_attendees && (parseInt(form.max_attendees) < 1 || parseInt(form.max_attendees) > 1000)) {
+      newErrors.max_attendees = 'Max attendees must be between 1 and 1000';
     }
 
-    if (!form.startTime) {
-      newErrors.startTime = 'Start time is required';
-    }
-
-    if (!form.duration) {
-      newErrors.duration = 'Duration is required';
-    } else if (parseInt(form.duration) < MIN_DURATION) {
-      newErrors.duration = `Duration must be at least ${MIN_DURATION} minutes`;
-    } else if (parseInt(form.duration) > 480) {
-      newErrors.duration = 'Duration cannot exceed 8 hours';
-    }
-
-    if (!form.organizer.trim()) {
-      newErrors.organizer = 'Organizer name is required';
-    }
-
-    if (!form.meetingLink.trim()) {
-      newErrors.meetingLink = 'Meeting link is required';
-    } else {
-      const urlPattern = /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/;
-      if (!urlPattern.test(form.meetingLink)) {
-        newErrors.meetingLink = 'Please enter a valid URL';
-      }
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    return newErrors;
   }, [form]);
 
   const showMessage = useCallback((msg, type = 'success') => {
     setPopup({ message: msg, type });
-    setTimeout(() => setPopup(''), POPUP_DURATION);
+    setTimeout(() => setPopup(''), 4000);
   }, []);
 
   const resetForm = useCallback(() => {
     setForm({
-      name: '',
-      date: '',
-      startTime: '',
-      duration: '',
-      timezone: 'Asia/Kolkata',
-      mode: 'Online',
-      organizer: '',
-      meetingLink: '',
+      title: '', description: '', date: '', start_time: '', end_time: '', duration: '',
+      timezone: 'Asia/Kolkata', mode_of_event: 'online', organizer: '', organizer_email: '',
+      meeting_link: '', location: '', max_attendees: '', tags: []
     });
     setErrors({});
   }, []);
 
-  const fetchEvents = useCallback(async () => {
+  const fetchEvents = useCallback(async (filterParams = {}) => {
     setLoading(true);
     try {
-      const res = await fetch('/api/events');
-      if (!res.ok) throw new Error('Failed to fetch events');
-      const data = await res.json();
-      setEvents(data);
-      showMessage('Events loaded successfully!');
-    } catch (err) {
-      console.error('Error fetching events:', err);
-      showMessage('Failed to load events. Please try again.', 'error');
+      console.log('🔄 Fetching events with filters:', filterParams);
+      const response = await eventsAPI.getEvents(filterParams);
+      
+      if (response.data.success) {
+        console.log('✅ Events fetched:', response.data.data);
+        setEvents(response.data.data);
+        setFilteredEvents(response.data.data);
+        if (response.data.data.length === 0) {
+          showMessage('No events found', 'info');
+        }
+      } else {
+        console.error('Failed to fetch events:', response.data.message);
+        showMessage('Failed to fetch events: ' + response.data.message, 'error');
+        setEvents([]);
+        setFilteredEvents([]);
+      }
+    } catch (error) {
+      console.error('Error fetching events:', error);
+      showMessage('Failed to fetch events. Using fallback data.', 'error');
+      // Fallback to empty array if API fails
+      setEvents([]);
+      setFilteredEvents([]);
     } finally {
       setLoading(false);
     }
   }, [showMessage]);
+
+  // Search and filter functionality
+  useEffect(() => {
+    let filtered = [...events];
+
+    // Apply search
+    if (searchTerm.trim()) {
+      filtered = filtered.filter(event =>
+        event.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        event.organizer?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        event.description?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    // Apply filters
+    if (filters.status) {
+      filtered = filtered.filter(event => event.status === filters.status);
+    }
+    if (filters.mode) {
+      filtered = filtered.filter(event => event.mode_of_event === filters.mode);
+    }
+    if (filters.organizer) {
+      filtered = filtered.filter(event => 
+        event.organizer?.toLowerCase().includes(filters.organizer.toLowerCase())
+      );
+    }
+    if (filters.dateFrom) {
+      filtered = filtered.filter(event => new Date(event.date) >= new Date(filters.dateFrom));
+    }
+    if (filters.dateTo) {
+      filtered = filtered.filter(event => new Date(event.date) <= new Date(filters.dateTo));
+    }
+
+    setFilteredEvents(filtered);
+  }, [events, searchTerm, filters]);
 
   useEffect(() => {
     fetchEvents();
   }, [fetchEvents]);
 
   useEffect(() => {
-    if (showModal) {
-      setTimeout(() => firstInputRef.current?.focus(), 100);
-      document.body.style.overflow = 'hidden';
-      const handleEscape = (e) => {
-        if (e.key === 'Escape') {
-          handleCloseModal();
-        }
-      };
-      document.addEventListener('keydown', handleEscape);
-      return () => {
-        document.body.style.overflow = 'unset';
-        document.removeEventListener('keydown', handleEscape);
-      };
+    if (showModal && firstInputRef.current) {
+      firstInputRef.current.focus();
     }
   }, [showModal]);
 
@@ -142,27 +199,45 @@ const Events = () => {
     }
   }, [errors]);
 
+  const handleTagsChange = (tag) => {
+    setForm(prev => ({
+      ...prev,
+      tags: prev.tags.includes(tag) 
+        ? prev.tags.filter(t => t !== tag)
+        : [...prev.tags, tag]
+    }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validateForm()) {
-      showMessage('Please fix the errors below', 'error');
+    const newErrors = validateForm();
+    
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
       return;
     }
+
     setSubmitLoading(true);
     try {
-      const res = await fetch('/api/events', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      });
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      const newEvent = await res.json();
-      setEvents(prev => [newEvent, ...prev]);
-      setShowModal(false);
-      resetForm();
-      showMessage('Event created successfully!');
-    } catch (err) {
-      console.error('Error creating event:', err);
+      const eventData = {
+        ...form,
+        duration: form.duration ? parseInt(form.duration) : 60,
+        max_attendees: form.max_attendees ? parseInt(form.max_attendees) : null,
+      };
+
+      console.log('📝 Submitting event:', eventData);
+      const response = await eventsAPI.createEvent(eventData);
+      
+      if (response.data.success) {
+        showMessage('✅ Event created successfully!', 'success');
+        resetForm();
+        setShowModal(false);
+        fetchEvents(); // Refresh the events list
+      } else {
+        showMessage('Failed to create event: ' + response.data.message, 'error');
+      }
+    } catch (error) {
+      console.error('Error creating event:', error);
       showMessage('Failed to create event. Please try again.', 'error');
     } finally {
       setSubmitLoading(false);
@@ -170,390 +245,705 @@ const Events = () => {
   };
 
   const handleCloseModal = useCallback(() => {
-    const hasChanges = Object.values(form).some(value => value !== '' && value !== 'Asia/Kolkata' && value !== 'Online');
-    if (hasChanges) {
+    if (form.title || form.organizer || form.date) {
       if (window.confirm('You have unsaved changes. Are you sure you want to close?')) {
-        setShowModal(false);
         resetForm();
+        setShowModal(false);
       }
     } else {
-      setShowModal(false);
       resetForm();
+      setShowModal(false);
     }
   }, [form, resetForm]);
 
   const handleJoinEvent = useCallback((eventId, meetingLink) => {
-    if (meetingLink) {
+    if (meetingLink && meetingLink !== '') {
       window.open(meetingLink, '_blank', 'noopener,noreferrer');
-      showMessage('Opening meeting link...');
+      showMessage('Opening meeting link...', 'success');
     } else {
-      showMessage('No meeting link available', 'error');
+      showMessage('Meeting link not available for this event', 'error');
     }
   }, [showMessage]);
 
-  const initialsAvatar = (name = '') => {
-    const initials = name
-      .split(' ')
-      .slice(0, 2)
-      .map((n) => n[0])
-      .join('')
-      .toUpperCase();
-    return (
-      <div className="w-12 h-12 flex items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold text-sm shadow-lg">
-        {initials || 'NA'}
-      </div>
-    );
+  const handleExport = useCallback(() => {
+    const csvContent = [
+      ['Title', 'Organizer', 'Date', 'Time', 'Duration (min)', 'Mode', 'Status', 'Timezone'],
+      ...filteredEvents.map(event => [
+        event.title,
+        event.organizer,
+        event.date,
+        event.start_time,
+        event.duration,
+        event.mode_of_event,
+        event.status,
+        event.timezone
+      ])
+    ].map(row => row.join(',')).join('\\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    if (link.download !== undefined) {
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `events-${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showMessage('✅ Events exported successfully!', 'success');
+    }
+  }, [filteredEvents, showMessage]);
+
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case 'upcoming': return <Circle className="w-4 h-4 text-blue-500" />;
+      case 'live': return <PlayCircle className="w-4 h-4 text-green-500" />;
+      case 'completed': return <CheckCircle2 className="w-4 h-4 text-gray-500" />;
+      case 'cancelled': return <XCircle className="w-4 h-4 text-red-500" />;
+      default: return <Circle className="w-4 h-4 text-gray-400" />;
+    }
   };
 
-  const ErrorMessage = ({ error }) => (
-    error ? (
-      <div className="text-red-400 text-sm mt-2 flex items-center gap-2" role="alert" aria-live="polite">
-        <AlertCircle className="w-4 h-4 flex-shrink-0" />
-        {error}
-      </div>
-    ) : null
-  );
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'upcoming': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'live': return 'bg-green-100 text-green-800 border-green-200';
+      case 'completed': return 'bg-gray-100 text-gray-800 border-gray-200';
+      case 'cancelled': return 'bg-red-100 text-red-800 border-red-200';
+      default: return 'bg-gray-100 text-gray-600 border-gray-200';
+    }
+  };
 
   const getModeIcon = (mode) => {
     switch (mode) {
-      case 'Online': return <Video className="w-4 h-4" />;
-      case 'Offline': return <MapPin className="w-4 h-4" />;
-      case 'Hybrid': return <Users className="w-4 h-4" />;
+      case 'online': return <Video className="w-4 h-4" />;
+      case 'offline': return <MapPin className="w-4 h-4" />;
+      case 'hybrid': return <Globe className="w-4 h-4" />;
       default: return <Video className="w-4 h-4" />;
     }
   };
 
   const getModeColor = (mode) => {
     switch (mode) {
-      case 'Online': return 'bg-blue-50 text-blue-700 border-blue-200';
-      case 'Offline': return 'bg-green-50 text-green-700 border-green-200';
-      case 'Hybrid': return 'bg-purple-50 text-purple-700 border-purple-200';
-      default: return 'bg-blue-50 text-blue-700 border-blue-200';
+      case 'online': return 'bg-purple-100 text-purple-800 border-purple-200';
+      case 'offline': return 'bg-orange-100 text-orange-800 border-orange-200';
+      case 'hybrid': return 'bg-indigo-100 text-indigo-800 border-indigo-200';
+      default: return 'bg-purple-100 text-purple-600 border-purple-200';
     }
   };
 
+  const ErrorMessage = ({ error }) => error ? (
+    <div className="text-red-400 text-sm mt-2 flex items-center gap-2" role="alert">
+      <AlertCircle className="w-4 h-4 flex-shrink-0" />
+      {error}
+    </div>
+  ) : null;
+
+  const formatEventDate = (date) => {
+    return new Date(date).toLocaleDateString('en-US', {
+      weekday: 'short',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
+  const formatEventTime = (time) => {
+    return new Date(`2000-01-01T${time}`).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 text-gray-900">
-      {/* Success/Error Popup */}
-      {popup && (
-        <div className={`fixed top-6 right-6 z-50 px-6 py-4 rounded-lg shadow-2xl border backdrop-blur-sm transition-all duration-300 ${
-          popup.type === 'success' 
-            ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
-            : 'bg-red-50 text-red-700 border-red-200'
-        }`}>
-          <div className="flex items-center gap-3">
-            {popup.type === 'success' ? (
-              <CheckCircle className="w-5 h-5 flex-shrink-0" />
-            ) : (
-              <AlertCircle className="w-5 h-5 flex-shrink-0" />
-            )}
-            <span className="font-medium">{popup.message}</span>
-          </div>
-        </div>
-      )}
-
-      <div className="px-6 md:px-12 lg:px-20 xl:px-40 py-8">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">
-          <div>
-            <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-gray-800 via-gray-700 to-gray-600 bg-clip-text text-transparent mb-8 px-4 py-2">
-              Upcoming Events
-            </h1>
-            <p className="text-lg text-gray-600 max-w-2xl leading-relaxed">
-              Stay connected and never miss important meetings. Join your scheduled events with ease.
-            </p>
-          </div>
-          <button
-            onClick={() => setShowModal(true)}
-            className="flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-violet-300 to-purple-300 hover:from-violet-400 hover:to-purple-400 text-black font-bold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
-          >
-            <Plus className="w-5 h-5" />
-            Create Event
-          </button>
-        </div>
-
-        {/* Events List */}
-        <div className="space-y-6">
-          {loading ? (
-            <div className="flex justify-center py-16">
-              <div className="flex items-center gap-3 text-gray-600">
-                <svg className="animate-spin h-6 w-6" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span className="font-medium">Loading events...</span>
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-indigo-50">
+      {/* Header Section */}
+      <div className="bg-white border-b border-purple-100 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-purple-100 rounded-lg">
+                <Calendar className="w-6 h-6 text-purple-600" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">Events Management</h1>
+                <div className="flex items-center gap-2 mt-1">
+                  <div className={`w-2 h-2 rounded-full ${dbConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                  <p className="text-sm text-gray-600">
+                    {dbConnected ? 'Database Connected' : 'Database Disconnected'} • {filteredEvents.length} events
+                  </p>
+                </div>
               </div>
             </div>
-          ) : events.length === 0 ? (
-            <div className="text-center py-16 text-gray-500">
-              <Calendar className="w-16 h-16 mx-auto mb-4 opacity-50" />
-              <h3 className="text-xl font-semibold mb-2">No events scheduled</h3>
-              <p className="text-gray-400">Create your first event to get started!</p>
-            </div>
-          ) : (
-            events.map((event, index) => (
-              <div
-                key={event.id || index}
-                className="bg-white/80 backdrop-blur-sm border border-gray-200 rounded-2xl p-6 shadow-xl hover:shadow-2xl transition-all duration-300 hover:border-gray-300"
+            
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+              <button
+                onClick={handleExport}
+                disabled={filteredEvents.length === 0}
+                className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <div className="flex flex-col lg:flex-row gap-6">
-                  <div className="flex items-start gap-4 flex-1">
-                    {initialsAvatar(event.organizer)}
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-xl font-bold text-gray-900 mb-2 line-clamp-2">
-                        {event.name}
-                      </h3>
-                      <div className="flex flex-wrap gap-4 text-sm text-gray-600 mb-4">
-                        <div className="flex items-center gap-2">
-                          <Calendar className="w-4 h-4 text-violet-500" />
-                          <span className="font-medium">{event.date}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Clock className="w-4 h-4 text-violet-500" />
-                          <span className="font-medium">{event.startTime} ({event.duration} min)</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Users className="w-4 h-4 text-violet-500" />
-                          <span className="font-medium">{event.organizer}</span>
-                        </div>
-                      </div>
-                      <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold border ${getModeColor(event.mode)}`}>
-                        {getModeIcon(event.mode)}
-                        {event.mode}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex flex-col sm:flex-row lg:flex-col gap-3 lg:w-32">
-                    <button
-                      onClick={() => handleJoinEvent(event.id, event.meetingLink)}
-                      className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
+                <Download className="w-4 h-4" />
+                Export CSV
+              </button>
+              <button
+                onClick={() => setShowModal(true)}
+                className="flex items-center justify-center gap-2 px-6 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all transform hover:scale-105 shadow-lg"
+              >
+                <Plus className="w-4 h-4" />
+                Create Event
+              </button>
+            </div>
+          </div>
+
+          {/* Search and Filter Section */}
+          <div className="mt-6 space-y-4">
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <input
+                  type="text"
+                  placeholder="Search events..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+              </div>
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+                  showFilters ? 'bg-purple-100 text-purple-700 border-purple-300' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                <Filter className="w-4 h-4" />
+                Filters
+              </button>
+            </div>
+
+            {/* Filter Options */}
+            {showFilters && (
+              <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                    <select
+                      value={filters.status}
+                      onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500"
                     >
-                      Join
+                      <option value="">All Status</option>
+                      <option value="upcoming">Upcoming</option>
+                      <option value="live">Live</option>
+                      <option value="completed">Completed</option>
+                      <option value="cancelled">Cancelled</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Mode</label>
+                    <select
+                      value={filters.mode}
+                      onChange={(e) => setFilters(prev => ({ ...prev, mode: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500"
+                    >
+                      <option value="">All Modes</option>
+                      <option value="online">Online</option>
+                      <option value="offline">Offline</option>
+                      <option value="hybrid">Hybrid</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">From Date</label>
+                    <input
+                      type="date"
+                      value={filters.dateFrom}
+                      onChange={(e) => setFilters(prev => ({ ...prev, dateFrom: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">To Date</label>
+                    <input
+                      type="date"
+                      value={filters.dateTo}
+                      onChange={(e) => setFilters(prev => ({ ...prev, dateTo: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <button
+                      onClick={() => {
+                        setFilters({ status: '', mode: '', organizer: '', dateFrom: '', dateTo: '' });
+                        setSearchTerm('');
+                      }}
+                      className="w-full px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md border border-gray-300 transition-colors"
+                    >
+                      Clear All
                     </button>
                   </div>
                 </div>
               </div>
-            ))
-          )}
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Modal for Creating New Event */}
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {loading ? (
+          <div className="flex justify-center items-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+          </div>
+        ) : filteredEvents.length === 0 ? (
+          <div className="text-center py-12">
+            <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No events found</h3>
+            <p className="text-gray-600 mb-6">
+              {searchTerm || Object.values(filters).some(f => f) ? 
+                'Try adjusting your search or filters.' : 
+                'Create your first event to get started.'}
+            </p>
+            <button
+              onClick={() => setShowModal(true)}
+              className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all transform hover:scale-105"
+            >
+              <Plus className="w-4 h-4" />
+              Create Your First Event
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredEvents.map((event) => (
+              <div
+                key={event.id}
+                className="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 border border-gray-200 overflow-hidden group"
+              >
+                <div className="p-6">
+                  {/* Event Header */}
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(event.status)}`}>
+                          {getStatusIcon(event.status)}
+                          {event.status?.toUpperCase() || 'UPCOMING'}
+                        </span>
+                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border ${getModeColor(event.mode_of_event)}`}>
+                          {getModeIcon(event.mode_of_event)}
+                          {event.mode_of_event?.toUpperCase() || 'ONLINE'}
+                        </span>
+                      </div>
+                      <h3 className="text-lg font-bold text-gray-900 mb-1 group-hover:text-purple-600 transition-colors">
+                        {event.title}
+                      </h3>
+                      {event.description && (
+                        <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+                          {event.description}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Event Details */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <User className="w-4 h-4 text-purple-500" />
+                      <span className="font-medium">{event.organizer || 'Unknown Organizer'}</span>
+                    </div>
+                    
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <Calendar className="w-4 h-4 text-purple-500" />
+                      <span>{formatEventDate(event.date)}</span>
+                    </div>
+                    
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <Clock className="w-4 h-4 text-purple-500" />
+                      <span>
+                        {formatEventTime(event.start_time)} 
+                        {event.duration && ` • ${event.duration} min`}
+                        {event.timezone && (
+                          <span className="text-xs text-gray-500 ml-1">
+                            ({event.timezone})
+                          </span>
+                        )}
+                      </span>
+                    </div>
+
+                    {event.location && event.mode_of_event !== 'online' && (
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <MapPin className="w-4 h-4 text-purple-500" />
+                        <span className="truncate">{event.location}</span>
+                      </div>
+                    )}
+
+                    {event.max_attendees && (
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <Users className="w-4 h-4 text-purple-500" />
+                        <span>Max {event.max_attendees} attendees</span>
+                      </div>
+                    )}
+
+                    {event.tags && event.tags.length > 0 && (
+                      <div className="flex items-start gap-2 text-sm">
+                        <Tag className="w-4 h-4 text-purple-500 mt-0.5" />
+                        <div className="flex flex-wrap gap-1">
+                          {event.tags.slice(0, 3).map((tag, idx) => (
+                            <span key={idx} className="inline-block px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
+                              {tag}
+                            </span>
+                          ))}
+                          {event.tags.length > 3 && (
+                            <span className="inline-block px-2 py-1 bg-gray-100 text-gray-500 text-xs rounded">
+                              +{event.tags.length - 3}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Action Button */}
+                  {event.meeting_link && event.status === 'upcoming' && (
+                    <div className="mt-4 pt-4 border-t border-gray-100">
+                      <button
+                        onClick={() => handleJoinEvent(event.id, event.meeting_link)}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all transform hover:scale-105"
+                      >
+                        <Video className="w-4 h-4" />
+                        Join Meeting
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Create Event Modal */}
       {showModal && (
-        <div
-          className="fixed inset-0 flex items-center justify-center bg-black/30 backdrop-blur-sm z-50 px-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="modal-title"
-        >
-          <div
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-2 sm:p-4 z-50">
+          <div 
             ref={modalRef}
-            className="bg-white border border-gray-200 rounded-2xl shadow-2xl w-full max-w-2xl mx-auto text-gray-900 max-h-[90vh] overflow-y-auto"
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[90vh] sm:h-[85vh] flex flex-col mx-2 sm:mx-0"
           >
-            <div className="p-8">
-              {/* Modal Header */}
-              <div className="flex justify-between items-center mb-8">
-                <h2 id="modal-title" className="text-3xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
-                  Create New Event
-                </h2>
+            {/* Fixed Header */}
+            <div className="flex-shrink-0 p-4 sm:p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-purple-100 rounded-lg">
+                    <Plus className="w-5 h-5 text-purple-600" />
+                  </div>
+                  <h2 className="text-xl font-bold text-gray-900">Create New Event</h2>
+                </div>
                 <button
-                  type="button"
                   onClick={handleCloseModal}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors duration-200"
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  disabled={submitLoading}
                 >
-                  <X className="w-6 h-6 text-gray-600 hover:text-gray-900" />
+                  <XCircle className="w-5 h-5 text-gray-500" />
                 </button>
               </div>
+            </div>
 
-              <form onSubmit={handleSubmit}>
-                <div className="space-y-6">
-                  {/* Event Title */}
-                  <div>
-                    <label htmlFor="name" className="block text-sm font-semibold text-gray-700 mb-3">
-                      Event Title *
-                    </label>
-                    <input
-                      ref={firstInputRef}
-                      type="text"
-                      name="name"
-                      id="name"
-                      value={form.name}
-                      onChange={handleChange}
-                      placeholder="Enter event title"
-                      required
-                      className={`w-full border rounded-xl px-4 py-3 bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all duration-300 ${
-                        errors.name ? 'border-red-400 ring-2 ring-red-200' : 'border-gray-300 hover:border-gray-400'
-                      }`}
-                    />
-                    <ErrorMessage error={errors.name} />
-                  </div>
+            <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+              {/* Scrollable Content Area */}
+              <div 
+                className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 modal-scrollbar" 
+                style={{
+                  maxHeight: 'calc(85vh - 200px)',
+                  minHeight: '400px'
+                }}
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Event Title */}
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Event Title *
+                  </label>
+                  <input
+                    ref={firstInputRef}
+                    type="text"
+                    name="title"
+                    value={form.title}
+                    onChange={handleChange}
+                    placeholder="Enter event title"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors"
+                    required
+                  />
+                  <ErrorMessage error={errors.title} />
+                </div>
 
-                  {/* Date and Time Row */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <label htmlFor="date" className="block text-sm font-semibold text-gray-700 mb-3">
-                        Date *
-                      </label>
-                      <input
-                        type="date"
-                        name="date"
-                        id="date"
-                        value={form.date}
-                        onChange={handleChange}
-                        required
-                        className={`w-full border rounded-xl px-4 py-3 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all duration-300 ${
-                          errors.date ? 'border-red-400 ring-2 ring-red-200' : 'border-gray-300 hover:border-gray-400'
-                        }`}
-                      />
-                      <ErrorMessage error={errors.date} />
-                    </div>
-                    <div>
-                      <label htmlFor="startTime" className="block text-sm font-semibold text-gray-700 mb-3">
-                        Start Time *
-                      </label>
-                      <input
-                        type="time"
-                        name="startTime"
-                        id="startTime"
-                        value={form.startTime}
-                        onChange={handleChange}
-                        required
-                        className={`w-full border rounded-xl px-4 py-3 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all duration-300 ${
-                          errors.startTime ? 'border-red-400 ring-2 ring-red-200' : 'border-gray-300 hover:border-gray-400'
-                        }`}
-                      />
-                      <ErrorMessage error={errors.startTime} />
-                    </div>
-                  </div>
+                {/* Description */}
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Description
+                  </label>
+                  <textarea
+                    name="description"
+                    value={form.description}
+                    onChange={handleChange}
+                    placeholder="Brief description of the event"
+                    rows={3}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors resize-none"
+                  />
+                </div>
 
-                  {/* Duration and Organizer Row */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <label htmlFor="duration" className="block text-sm font-semibold text-gray-700 mb-3">
-                        Duration (minutes) *
-                      </label>
-                      <input
-                        type="number"
-                        name="duration"
-                        id="duration"
-                        value={form.duration}
-                        onChange={handleChange}
-                        placeholder="60"
-                        min={MIN_DURATION}
-                        max="480"
-                        required
-                        className={`w-full border rounded-xl px-4 py-3 bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all duration-300 ${
-                          errors.duration ? 'border-red-400 ring-2 ring-red-200' : 'border-gray-300 hover:border-gray-400'
-                        }`}
-                      />
-                      <ErrorMessage error={errors.duration} />
-                    </div>
-                    <div>
-                      <label htmlFor="organizer" className="block text-sm font-semibold text-gray-700 mb-3">
-                        Organizer *
-                      </label>
-                      <input
-                        type="text"
-                        name="organizer"
-                        id="organizer"
-                        value={form.organizer}
-                        onChange={handleChange}
-                        placeholder="Your name"
-                        required
-                        className={`w-full border rounded-xl px-4 py-3 bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all duration-300 ${
-                          errors.organizer ? 'border-red-400 ring-2 ring-red-200' : 'border-gray-300 hover:border-gray-400'
-                        }`}
-                      />
-                      <ErrorMessage error={errors.organizer} />
-                    </div>
-                  </div>
+                {/* Organizer */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Organizer Name *
+                  </label>
+                  <input
+                    type="text"
+                    name="organizer"
+                    value={form.organizer}
+                    onChange={handleChange}
+                    placeholder="Enter organizer name"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors"
+                    required
+                  />
+                  <ErrorMessage error={errors.organizer} />
+                </div>
 
-                  {/* Timezone */}
-                  <div>
-                    <label htmlFor="timezone" className="block text-sm font-semibold text-gray-700 mb-3">
-                      Timezone *
-                    </label>
-                    <select
-                      name="timezone"
-                      id="timezone"
-                      value={form.timezone}
-                      onChange={handleChange}
-                      required
-                      className="w-full border border-gray-300 rounded-xl px-4 py-3 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all duration-300 hover:border-gray-400"
-                    >
-                      {TIMEZONES.map(tz => (
-                        <option key={tz} value={tz} className="bg-white">{tz}</option>
-                      ))}
-                    </select>
-                  </div>
+                {/* Organizer Email */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Organizer Email
+                  </label>
+                  <input
+                    type="email"
+                    name="organizer_email"
+                    value={form.organizer_email}
+                    onChange={handleChange}
+                    placeholder="organizer@company.com"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors"
+                  />
+                  <ErrorMessage error={errors.organizer_email} />
+                </div>
 
-                  {/* Event Mode */}
-                  <div>
-                    <label htmlFor="mode" className="block text-sm font-semibold text-gray-700 mb-3">
-                      Event Mode *
-                    </label>
-                    <select
-                      name="mode"
-                      id="mode"
-                      value={form.mode}
-                      onChange={handleChange}
-                      required
-                      className="w-full border border-gray-300 rounded-xl px-4 py-3 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all duration-300 hover:border-gray-400"
-                    >
-                      <option value="Online" className="bg-white">Online</option>
-                      <option value="Offline" className="bg-white">Offline</option>
-                      <option value="Hybrid" className="bg-white">Hybrid</option>
-                    </select>
-                  </div>
+                {/* Date */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Event Date *
+                  </label>
+                  <input
+                    type="date"
+                    name="date"
+                    value={form.date}
+                    onChange={handleChange}
+                    min={new Date().toISOString().split('T')[0]}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors"
+                    required
+                  />
+                  <ErrorMessage error={errors.date} />
+                </div>
 
-                  {/* Meeting Link */}
-                  <div>
-                    <label htmlFor="meetingLink" className="block text-sm font-semibold text-gray-700 mb-3">
-                      Meeting Link *
+                {/* Start Time */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Start Time *
+                  </label>
+                  <input
+                    type="time"
+                    name="start_time"
+                    value={form.start_time}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors"
+                    required
+                  />
+                  <ErrorMessage error={errors.start_time} />
+                </div>
+
+                {/* End Time */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    End Time
+                  </label>
+                  <input
+                    type="time"
+                    name="end_time"
+                    value={form.end_time}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors"
+                  />
+                </div>
+
+                {/* Duration */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Duration (minutes)
+                  </label>
+                  <input
+                    type="number"
+                    name="duration"
+                    value={form.duration}
+                    onChange={handleChange}
+                    placeholder="60"
+                    min="1"
+                    max="1440"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors"
+                  />
+                </div>
+
+                {/* Timezone */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Timezone
+                  </label>
+                  <select
+                    name="timezone"
+                    value={form.timezone}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors"
+                  >
+                    {TIMEZONES.map(tz => (
+                      <option key={tz} value={tz}>{tz}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Mode */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Event Mode
+                  </label>
+                  <select
+                    name="mode_of_event"
+                    value={form.mode_of_event}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors"
+                  >
+                    <option value="online">🖥️ Online</option>
+                    <option value="offline">📍 Offline</option>
+                    <option value="hybrid">🌐 Hybrid</option>
+                  </select>
+                </div>
+
+                {/* Max Attendees */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Max Attendees
+                  </label>
+                  <input
+                    type="number"
+                    name="max_attendees"
+                    value={form.max_attendees}
+                    onChange={handleChange}
+                    placeholder="50"
+                    min="1"
+                    max="1000"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors"
+                  />
+                  <ErrorMessage error={errors.max_attendees} />
+                </div>
+
+                {/* Meeting Link */}
+                {(form.mode_of_event === 'online' || form.mode_of_event === 'hybrid') && (
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Meeting Link {form.mode_of_event === 'online' && '*'}
                     </label>
                     <input
                       type="url"
-                      name="meetingLink"
-                      id="meetingLink"
-                      value={form.meetingLink}
+                      name="meeting_link"
+                      value={form.meeting_link}
                       onChange={handleChange}
-                      placeholder="https://meet.google.com/... or https://zoom.us/..."
-                      required
-                      className={`w-full border rounded-xl px-4 py-3 bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all duration-300 ${
-                        errors.meetingLink ? 'border-red-400 ring-2 ring-red-200' : 'border-gray-300 hover:border-gray-400'
-                      }`}
+                      placeholder="https://meet.company.com/event-room"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors"
+                      required={form.mode_of_event === 'online'}
                     />
-                    <ErrorMessage error={errors.meetingLink} />
+                    <ErrorMessage error={errors.meeting_link} />
+                  </div>
+                )}
+
+                {/* Location */}
+                {(form.mode_of_event === 'offline' || form.mode_of_event === 'hybrid') && (
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Location {form.mode_of_event === 'offline' && '*'}
+                    </label>
+                    <input
+                      type="text"
+                      name="location"
+                      value={form.location}
+                      onChange={handleChange}
+                      placeholder="Conference Room A, Tech Hub, 123 Innovation Street"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors"
+                      required={form.mode_of_event === 'offline'}
+                    />
+                    <ErrorMessage error={errors.location} />
+                  </div>
+                )}
+
+                {/* Tags */}
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Event Tags
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {TAGS_OPTIONS.map(tag => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => handleTagsChange(tag)}
+                        className={`px-3 py-1 text-sm rounded-full border transition-colors ${
+                          form.tags.includes(tag)
+                            ? 'bg-purple-100 text-purple-800 border-purple-300'
+                            : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'
+                        }`}
+                      >
+                        {tag}
+                      </button>
+                    ))}
                   </div>
                 </div>
+              </div>
+              </div>
 
-                {/* Modal Footer */}
-                <div className="flex gap-4 justify-end p-8 pt-6 border-t border-gray-200">
+              {/* Fixed Footer with Form Actions */}
+              <div className="flex-shrink-0 p-4 sm:p-6 border-t border-gray-200 bg-gray-50 rounded-b-2xl">
+                <div className="flex flex-col sm:flex-row gap-3">
                   <button
                     type="button"
                     onClick={handleCloseModal}
-                    className="px-6 py-3 bg-gray-600 hover:bg-gray-500 text-white rounded-xl font-semibold transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                    disabled={submitLoading}
+                    className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={submitLoading}
-                    className="px-8 py-3 bg-gradient-to-r from-violet-300 to-purple-300 hover:from-violet-400 hover:to-purple-400 text-black font-bold rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-violet-500 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                    className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {submitLoading ? (
-                      <span className="flex items-center gap-3">
-                        <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                         Creating...
-                      </span>
-                    ) : 'Create Event'}
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-4 h-4" />
+                        Create Event
+                      </>
+                    )}
                   </button>
                 </div>
-              </form>
-            </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Success/Error Messages */}
+      {popup && (
+        <div className="fixed top-4 right-4 z-50">
+          <div className={`px-6 py-4 rounded-lg shadow-lg ${
+            popup.type === 'success' ? 'bg-green-500 text-white' :
+            popup.type === 'error' ? 'bg-red-500 text-white' :
+            'bg-blue-500 text-white'
+          }`}>
+            {popup.message}
           </div>
         </div>
       )}
