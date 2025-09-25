@@ -1,26 +1,39 @@
-# 🧑‍💼 HRMS - Human Resource Management System
+# 🧑‍💼 HRMS — Human Resource Management System
 
 A simple and responsive HRMS (Human Resource Management System) web application to manage employee records, recognition, events, chat, and more — all in one place.
 
-🔗 **Live Preview**: [hrms-frontend](https://hrms-frontend-nine.vercel.app/) 
+
+---
 
 ## 🚀 Features
 - 📊 Dashboard overview  
-- 💬 Real-time Chat  
+- 💬 Real-time chat  
 - 👥 Employee directory  
-- 📚 Activity Feed  
+- 📚 Activity feed  
 - 🏆 Recognition system  
 - 📅 Event manager  
 - 🙍 Profile & ⚙️ Settings  
+- Responsive mobile-first layout  
+
+---
 
 ## 🛠️ Tech Stack
-- **Frontend**: React.js, Bootstrap, React Icons  
-- **Backend**: Node.js *(planned)*  
-- **Design**: Responsive & clean UI  
+- **Frontend:** React.js, React Icons, Tailwind CSS (optional)  
+- **Backend:** Node.js + Express 
+- **Database:** PostgreSQL (local instance)  
+- **Design:** Clean, responsive UI  
 
-## 📁 Getting Started
+---
+
+## 📁 Getting Started — Frontend
+
 ```bash
+# clone repo
 git clone https://github.com/your-username/hrms.git
 cd hrms
+
+# install dependencies
 npm install
+
+# run dev server
 npm start

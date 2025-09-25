@@ -2,9 +2,10 @@
   "name": "hrms-backend",
   "version": "1.0.0",
   "description": "Backend for HRMS React App",
-  "main": "index.js",
+  "main": "server.js",
   "type": "module",
   "scripts": {
+
     "start": "node index.js",
     "dev": "nodemon index.js",
     "server": "node index.js"
