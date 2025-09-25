@@ -20,7 +20,7 @@ function App() {
 
   return (
     <DarkModeProvider>
-      <div className="d-flex h-100" style={{ minHeight: "100vh" }}>
+      <div className="flex min-h-screen" style={{ minHeight: "100vh" }}>
         <Sidebar />
         <div
           style={{
